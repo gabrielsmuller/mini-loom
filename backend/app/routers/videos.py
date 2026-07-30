@@ -1,0 +1,94 @@
+"""Video endpoints: create (get upload URL), watch, list own videos."""
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.database import get_db
+from app.models import User, Video
+from app.schemas import VideoCreate, VideoCreateResponse, VideoOut
+from app.auth import get_current_user
+from app.s3 import generate_upload_post, generate_view_url, delete_object
+
+router = APIRouter(prefix="/videos", tags=["videos"])
+
+
+@router.post("", response_model=VideoCreateResponse, status_code=201)
+def create_video(
+    payload: VideoCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Step 1 of upload: create the DB record and hand back a pre-signed URL.
+    The client then uploads the file straight to S3 using that URL.
+    """
+    video_id = str(uuid.uuid4())
+    # Namespace the key by user and video id to avoid collisions
+    s3_key = f"videos/{user.id}/{video_id}/{payload.filename}"
+
+    video = Video(id=video_id, user_id=user.id, title=payload.title, s3_key=s3_key)
+    db.add(video)
+    db.commit()
+
+    post = generate_upload_post(s3_key)
+    return VideoCreateResponse(
+        id=video_id,
+        upload_url=post["url"],
+        upload_fields=post["fields"],
+        watch_url=f"/v/{video_id}",
+    )
+
+
+@router.get("/{video_id}/watch")
+def watch_video(video_id: str, db: Session = Depends(get_db)):
+    """
+    Public endpoint (no auth). Increments the view count and returns a
+    pre-signed URL the browser can stream the video from.
+    """
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    video.views += 1
+    db.commit()
+
+    return {
+        "id": video.id,
+        "title": video.title,
+        "views": video.views,
+        "video_url": generate_view_url(video.s3_key),
+    }
+
+
+@router.get("", response_model=list[VideoOut])
+def list_my_videos(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return db.query(Video).filter(Video.user_id == user.id).all()
+
+
+@router.delete("/{video_id}", status_code=204)
+def delete_video(
+    video_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Delete a video: removes the S3 object AND the DB row. Scoped to the owner —
+    the filter on user_id means you can only delete your OWN videos (a request
+    for someone else's id simply returns 404).
+    """
+    video = (
+        db.query(Video)
+        .filter(Video.id == video_id, Video.user_id == user.id)
+        .first()
+    )
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    delete_object(video.s3_key)  # remove the file from S3
+    db.delete(video)             # remove the record from the database
+    db.commit()

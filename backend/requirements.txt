@@ -1,0 +1,14 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+mangum==0.17.0
+sqlalchemy==2.0.35
+psycopg[binary]==3.2.2
+pydantic[email]==2.9.2
+pydantic-settings==2.5.2
+# Verifies the RS256 JWTs that Cognito issues (against Cognito's public JWKS).
+python-jose[cryptography]==3.3.0
+boto3==1.35.24
+python-multipart==0.0.12
+# SQLAlchemy dialect that talks to Aurora over the RDS Data API (used in AWS
+# only; local dev/tests use the psycopg/SQLite path). Pulls in aurora-data-api.
+sqlalchemy-aurora-data-api==0.5.0

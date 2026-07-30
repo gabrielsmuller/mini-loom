@@ -1,0 +1,49 @@
+# Mini Loom
+
+> A serverless video-sharing platform on AWS - upload a video, get a shareable link.
+
+**Live demo:** `https://d2kjs0fj08999z.cloudfront.net`
+
+```mermaid
+flowchart TD
+    User([User])
+    CF[CloudFront] --> S3F[S3 · React app<br/>private, OAC]
+    APIGW[API Gateway<br/>throttled] --> L[Lambda<br/>FastAPI + Mangum]
+    L -->|Data API / HTTPS| Aurora[(Aurora Serverless v2<br/>scales to zero)]
+    L -->|pre-signed URL| S3V[S3 · videos]
+    User --> CF
+    User -->|Sign in| Cognito[Cognito + Google]
+    User --> APIGW
+    User -->|upload/stream direct| S3V
+```
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React + Vite, S3 + CloudFront (OAC) |
+| Backend | FastAPI on Lambda (container image), API Gateway |
+| Database | Aurora Serverless v2 (PostgreSQL) |
+| Auth | Amazon Cognito federated to Google (OIDC) |
+| Infrastructure | Terraform |
+| CI/CD | GitHub Actions |
+
+## Design decisions
+
+- **RDS Data API, not a NAT Gateway** — Lambda reaches Aurora over HTTPS instead of joining the VPC, avoiding a ~$33/mo NAT Gateway.
+- **Aurora scales to zero** - `MinCapacity=0` pauses compute when idle; the trade-off is a ~15s cold-start resume, which the backend retries through.
+- **Cognito + Google** - authentication is delegated to Cognito, removing password storage and resets; the API verifies Cognito's JWTs against the pool's public keys.
+- **Cost as a constraint** - a $5 budget with tiered alerts and an automated brake; 30-day log retention; least-privilege IAM.
+
+Measured idle cost: ≈ $0.70/month.
+
+## Run locally
+
+```bash
+# Backend (SQLite, no AWS needed)
+cd backend && pip install -r requirements-dev.txt && python -m pytest
+uvicorn app.main:app --reload
+
+# Frontend
+cd frontend && npm install && cp .env.example .env && npm run dev
+```
