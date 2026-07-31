@@ -16,6 +16,8 @@ locals {
 # ---------- Frontend bucket ----------
 resource "aws_s3_bucket" "frontend" {
   bucket = local.frontend_bucket_name
+  # Let `terraform destroy` empty + remove the bucket even with objects in it.
+  force_destroy = true
 }
 
 # Block every form of public access. The app is reached through CloudFront,
@@ -31,6 +33,8 @@ resource "aws_s3_bucket_public_access_block" "frontend" {
 # ---------- Videos bucket ----------
 resource "aws_s3_bucket" "videos" {
   bucket = local.videos_bucket_name
+  # Let `terraform destroy` empty + remove the bucket even with videos in it.
+  force_destroy = true
 }
 
 resource "aws_s3_bucket_public_access_block" "videos" {
