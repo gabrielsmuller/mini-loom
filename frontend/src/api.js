@@ -5,7 +5,9 @@
 
 import { getToken } from "./auth";
 
-const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// Strip any trailing slash so `${BASE}${path}` never produces a double slash
+// (the api_url Terraform output ends with "/").
+const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/+$/, "");
 
 async function request(path, { method = "GET", body, auth = false } = {}) {
   const headers = {};
