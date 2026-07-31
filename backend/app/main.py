@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 
+from app.config import settings
 from app.routers import auth, videos
 
 # NOTE: tables are NOT created here. In Lambda, module import runs during the
@@ -19,9 +20,13 @@ from app.routers import auth, videos
 
 app = FastAPI(title="Mini Loom API")
 
+# Allowed origins come from config: "*" locally, the CloudFront URL (+ localhost)
+# in AWS. Split the comma-separated env value into a list.
+_origins = [o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # tightened to the CloudFront domain in Terraform
+    allow_origins=_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

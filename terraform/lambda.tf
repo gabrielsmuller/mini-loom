@@ -33,6 +33,9 @@ resource "aws_lambda_function" "api" {
 
       COGNITO_USER_POOL_ID = aws_cognito_user_pool.main.id
       COGNITO_CLIENT_ID    = aws_cognito_user_pool_client.web.id
+
+      # Lock CORS to the live site (+ localhost for dev) instead of "*".
+      CORS_ALLOW_ORIGINS = "https://${aws_cloudfront_distribution.frontend.domain_name},http://localhost:5173"
       # AWS_REGION is provided automatically by the Lambda runtime.
     }
   }

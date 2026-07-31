@@ -1,0 +1,91 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+# Don't run two deploys at once.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+# id-token: write is required for OIDC (assume the AWS role with no stored keys).
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: 958620575923.dkr.ecr.us-east-1.amazonaws.com/mini-loom-backend
+  ROLE_ARN: arn:aws:iam::958620575923:role/mini-loom-github-actions
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---- 1. Test the backend ----
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run tests
+        working-directory: backend
+        run: |
+          pip install -r requirements-dev.txt
+          pytest
+
+      # ---- 2. Authenticate to AWS via OIDC (no stored keys) ----
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ---- 3. Build & push the Lambda image, tagged with the commit SHA ----
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build & push image
+        working-directory: backend
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          docker build --provenance=false --platform linux/amd64 \
+            -t $ECR_REPO:$IMAGE_TAG -t $ECR_REPO:latest .
+          docker push $ECR_REPO:$IMAGE_TAG
+          docker push $ECR_REPO:latest
+          echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+
+      # ---- 4. Apply infrastructure (points the Lambda at the new image) ----
+      - uses: hashicorp/setup-terraform@v3
+      - name: Terraform apply
+        working-directory: terraform
+        env:
+          TF_VAR_alert_email: ${{ secrets.ALERT_EMAIL }}
+          TF_VAR_google_client_id: ${{ secrets.GOOGLE_CLIENT_ID }}
+          TF_VAR_google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          TF_VAR_github_repo: ${{ github.repository }}
+        run: |
+          terraform init
+          terraform apply -auto-approve -var="image_tag=$IMAGE_TAG"
+
+      # ---- 5. Read outputs, build the frontend, deploy it ----
+      - name: Export Terraform outputs
+        working-directory: terraform
+        run: |
+          echo "VITE_API_URL=$(terraform output -raw api_url)"                 >> "$GITHUB_ENV"
+          echo "VITE_COGNITO_AUTHORITY=$(terraform output -raw cognito_issuer)" >> "$GITHUB_ENV"
+          echo "VITE_COGNITO_CLIENT_ID=$(terraform output -raw cognito_client_id)" >> "$GITHUB_ENV"
+          echo "VITE_COGNITO_DOMAIN=$(terraform output -raw cognito_domain)"    >> "$GITHUB_ENV"
+          echo "FRONTEND_BUCKET=$(terraform output -raw frontend_bucket)"       >> "$GITHUB_ENV"
+          echo "DIST_ID=$(terraform output -raw cloudfront_distribution_id)"    >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build & deploy frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          aws s3 sync dist/ "s3://$FRONTEND_BUCKET/" --delete
+          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"

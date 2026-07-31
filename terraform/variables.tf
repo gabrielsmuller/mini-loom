@@ -38,6 +38,13 @@ variable "budget_action_target_user" {
   default     = "terraform-user"
 }
 
+variable "github_repo" {
+  description = "GitHub repo (owner/name) allowed to assume the CI role via OIDC."
+  type        = string
+  # Set this in terraform.tfvars to YOUR repo, e.g. "gabrielsmuller/mini-loom".
+  default     = ""
+}
+
 # ---- Cognito / Google login ----
 variable "google_client_id" {
   description = "OAuth client ID from Google Cloud (for Cognito's Google identity provider)."

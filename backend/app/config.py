@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     cognito_user_pool_id: str = ""
     cognito_client_id: str = ""
 
+    # CORS: comma-separated list of allowed origins. Defaults to "*" for local
+    # dev; in AWS it's set to the CloudFront URL (+ localhost) via the Lambda env.
+    cors_allow_origins: str = "*"
+
     # AWS / S3
     aws_region: str = "us-east-1"
     video_bucket: str = "mini-loom-videos-dev"

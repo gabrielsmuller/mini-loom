@@ -50,7 +50,11 @@ resource "aws_s3_bucket_cors_configuration" "videos" {
 
   cors_rule {
     allowed_methods = ["POST", "PUT", "GET", "HEAD"]
-    allowed_origins = var.video_cors_origins
+    # Only the live site (+ localhost for dev) may upload/stream directly.
+    allowed_origins = [
+      "https://${aws_cloudfront_distribution.frontend.domain_name}",
+      "http://localhost:5173",
+    ]
     allowed_headers = ["*"]
     expose_headers  = ["ETag"]
     max_age_seconds = 3000

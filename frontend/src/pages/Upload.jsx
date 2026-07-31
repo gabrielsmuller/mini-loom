@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "react-oidc-context";
 import { api, uploadToS3 } from "../api";
+import { setToken } from "../auth";
 
 export default function Upload() {
+  const auth = useAuth();
   const [title, setTitle] = useState("");
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -24,9 +27,13 @@ export default function Upload() {
     }
   };
 
+  // Wait until the auth token is available before loading — otherwise on a
+  // fresh reload this can fire before the token is set and silently 401.
   useEffect(() => {
+    if (!auth.user?.id_token) return;
+    setToken(auth.user.id_token);
     loadVideos();
-  }, []);
+  }, [auth.user]);
 
   const MAX_BYTES = 200 * 1024 * 1024; // 200 MB — must match the backend cap
 
