@@ -122,6 +122,9 @@ export default function Upload() {
         <ul className="video-list">
           {videos.map((v) => (
             <li key={v.id}>
+              {v.thumbnail_url && (
+                <img className="thumb" src={v.thumbnail_url} alt="" />
+              )}
               <a href={`/v/${v.id}`}>{v.title}</a>{" "}
               <span className="muted">· {v.views} views</span>{" "}
               <button className="link" onClick={() => handleDelete(v.id)}>

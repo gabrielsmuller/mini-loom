@@ -1,12 +1,13 @@
 """Video endpoints: create (get upload URL), watch, list own videos."""
+import hashlib
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import User, Video
+from app.models import User, Video, VideoView
 from app.schemas import VideoCreate, VideoCreateResponse, VideoOut
 from app.auth import get_current_user
 from app.s3 import generate_upload_post, generate_view_url, delete_object
@@ -42,23 +43,40 @@ def create_video(
 
 
 @router.get("/{video_id}/watch")
-def watch_video(video_id: str, db: Session = Depends(get_db)):
+def watch_video(video_id: str, request: Request, db: Session = Depends(get_db)):
     """
-    Public endpoint (no auth). Increments the view count and returns a
-    pre-signed URL the browser can stream the video from.
+    Public endpoint (no auth). Increments the raw view count, records a unique
+    viewer (deduped by client-IP hash), and returns pre-signed URLs to stream
+    the video and show its thumbnail.
     """
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
 
     video.views += 1
+
+    # Unique viewers: the page is public, so key on a hash of the client IP.
+    fwd = request.headers.get("x-forwarded-for", "")
+    ip = fwd.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+    viewer_hash = hashlib.sha256(ip.encode()).hexdigest()[:32]
+    already = (
+        db.query(VideoView)
+        .filter(VideoView.video_id == video_id, VideoView.viewer_hash == viewer_hash)
+        .first()
+    )
+    if not already:
+        db.add(VideoView(video_id=video_id, viewer_hash=viewer_hash))
     db.commit()
+
+    unique_viewers = db.query(VideoView).filter(VideoView.video_id == video_id).count()
 
     return {
         "id": video.id,
         "title": video.title,
         "views": video.views,
+        "unique_viewers": unique_viewers,
         "video_url": generate_view_url(video.s3_key),
+        "thumbnail_url": generate_view_url(video.thumbnail_key) if video.thumbnail_key else None,
     }
 
 
@@ -67,7 +85,17 @@ def list_my_videos(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    return db.query(Video).filter(Video.user_id == user.id).all()
+    videos = db.query(Video).filter(Video.user_id == user.id).all()
+    return [
+        VideoOut(
+            id=v.id,
+            title=v.title,
+            views=v.views,
+            created_at=v.created_at,
+            thumbnail_url=generate_view_url(v.thumbnail_key) if v.thumbnail_key else None,
+        )
+        for v in videos
+    ]
 
 
 @router.delete("/{video_id}", status_code=204)
@@ -89,6 +117,9 @@ def delete_video(
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
 
+    # Remove the viewer rows first (they reference this video), then the file
+    # and the record itself.
+    db.query(VideoView).filter(VideoView.video_id == video_id).delete()
     delete_object(video.s3_key)  # remove the file from S3
     db.delete(video)             # remove the record from the database
     db.commit()

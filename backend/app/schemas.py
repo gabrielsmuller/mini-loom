@@ -30,7 +30,5 @@ class VideoOut(BaseModel):
     id: str
     title: str
     views: int
+    thumbnail_url: str | None = None  # pre-signed URL, once the worker fills it in
     created_at: datetime
-
-    class Config:
-        from_attributes = True

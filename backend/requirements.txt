@@ -12,3 +12,9 @@ python-multipart==0.0.12
 # SQLAlchemy dialect that talks to Aurora over the RDS Data API (used in AWS
 # only; local dev/tests use the psycopg/SQLite path). Pulls in aurora-data-api.
 sqlalchemy-aurora-data-api==0.5.0
+
+# Thumbnail worker: imageio-ffmpeg bundles a static ffmpeg binary (no system
+# install), imageio reads a video frame, Pillow writes the JPEG thumbnail.
+Pillow==10.4.0
+imageio==2.35.1
+imageio-ffmpeg==0.5.1

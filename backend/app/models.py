@@ -42,3 +42,15 @@ class Video(Base):
     created_at = Column(DateTime(timezone=True), default=_now)
 
     owner = relationship("User", back_populates="videos")
+
+
+class VideoView(Base):
+    """One row per (video, viewer) — lets us count UNIQUE viewers, not just
+    raw views. `viewer_hash` is a hash of the client IP (the watch page is
+    public, so there's no user id to key on)."""
+    __tablename__ = "video_views"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    video_id = Column(UUID(as_uuid=False), ForeignKey("videos.id"), nullable=False, index=True)
+    viewer_hash = Column(String, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=_now)

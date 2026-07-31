@@ -29,7 +29,9 @@ export default function Watch() {
   return (
     <>
       <h1>{video.title}</h1>
-      <p className="muted">{video.views} views</p>
+      <p className="muted">
+        {video.views} views · {video.unique_viewers} unique
+      </p>
       {unavailable ? (
         // The DB row exists but the file is gone (e.g. auto-expired after 7 days).
         <p className="error">This video is no longer available.</p>

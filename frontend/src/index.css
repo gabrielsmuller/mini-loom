@@ -121,3 +121,12 @@ video {
   color: #666;
   font-size: 0.9rem;
 }
+
+.thumb {
+  width: 80px;
+  height: 45px;
+  object-fit: cover;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-right: 0.5rem;
+}

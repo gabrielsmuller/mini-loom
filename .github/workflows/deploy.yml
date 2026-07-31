@@ -25,21 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ---- 0. TEMP: print the OIDC token claims so we can match the trust ----
-      - name: Debug OIDC claims
-        run: |
-          IDTOKEN=$(curl -sS "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" \
-            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" | jq -r '.value')
-          python3 - "$IDTOKEN" <<'EOF'
-          import sys, base64, json
-          p = sys.argv[1].split('.')[1]
-          p += '=' * (-len(p) % 4)
-          c = json.loads(base64.urlsafe_b64decode(p))
-          print("sub:", c.get("sub"))
-          print("aud:", c.get("aud"))
-          print("iss:", c.get("iss"))
-          EOF
-
       # ---- 1. Test the backend ----
       - uses: actions/setup-python@v5
         with:

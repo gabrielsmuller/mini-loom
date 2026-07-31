@@ -26,9 +26,10 @@ resource "aws_iam_role" "github_actions" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          # Any ref/event in this repo. Scoped to the repo, which is the
-          # security boundary; the exact-branch match is fussy across event types.
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:*"
+          # GitHub issues IMMUTABLE numeric IDs in the OIDC subject
+          # (owner@<id>/repo@<id>) to prevent name-reuse attacks, so we match
+          # those exact IDs. The trailing :* allows any ref/event in this repo.
+          "token.actions.githubusercontent.com:sub" = "repo:gabrielsmuller@120650592/mini-loom@1317383698:*"
         }
       }
     }]
