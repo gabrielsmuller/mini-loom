@@ -26,11 +26,7 @@ flowchart LR
 | Infrastructure | Terraform |
 | CI/CD | GitHub Actions |
 
-<<<<<<< HEAD
 Everything is provisioned with Terraform (remote state in S3). On push to `main`, GitHub Actions authenticates to AWS via OIDC (no stored keys), runs the tests, builds and pushes the Lambda image to ECR, applies the infrastructure, and deploys the frontend to S3 + CloudFront.
-=======
-Everything is provisioned with Terraform. On push to `main`, GitHub Actions authenticates to AWS via OIDC, runs the tests, builds and pushes the Lambda image to ECR, applies the infrastructure, and deploys the frontend to S3 + CloudFront.
->>>>>>> 7dd62b7b4f47dbb434bfc942654de5257d111217
 
 ## Design decisions
 
