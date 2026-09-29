@@ -15,7 +15,9 @@ the TCP path, pool_pre_ping + a connect timeout survive that pause/resume. The
 Data API is stateless HTTP, so it sidesteps the stale-connection problem
 entirely — there's no long-lived socket to go bad.
 """
-from sqlalchemy import create_engine
+import time
+
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from app.config import settings
@@ -51,25 +53,20 @@ Base = declarative_base()
 _initialized = False
 
 
-def init_db(retries: int = 12, delay: float = 3.0) -> None:
+def _resume_retry(fn, retries: int = 12, delay: float = 3.0):
     """
-    Create tables, tolerating Aurora Serverless auto-pause.
+    Run fn(), retrying while Aurora Serverless is resuming from auto-pause.
 
-    When Aurora is paused, the Data API's first call raises
-    DatabaseResumingException while the cluster wakes (~15-25s). We retry until
-    it's up. This runs on the first DB request (not at import), so it has the
-    full function-timeout budget rather than the 10s Lambda INIT window.
+    A paused cluster answers the first Data API call with
+    DatabaseResumingException while it wakes (~15-25s); we retry until it's up.
+    Any other error is raised immediately. Non-Aurora paths (local Postgres,
+    SQLite) never see this exception, so fn() just succeeds on the first try.
     """
-    import time
-
-    from app import models  # noqa: F401 — ensure tables are registered on Base
-
     last_error = None
     for _ in range(retries):
         try:
-            Base.metadata.create_all(bind=engine)
-            return
-        except Exception as e:  # retry only while Aurora is resuming
+            return fn()
+        except Exception as e:
             if "resuming" in str(e).lower():
                 last_error = e
                 time.sleep(delay)
@@ -78,15 +75,42 @@ def init_db(retries: int = 12, delay: float = 3.0) -> None:
     raise last_error
 
 
+def init_db() -> None:
+    """Create tables (once per container), waiting out an Aurora resume."""
+    from app import models  # noqa: F401 — ensure tables are registered on Base
+
+    _resume_retry(lambda: Base.metadata.create_all(bind=engine))
+
+
+def _ensure_awake(db) -> None:
+    """
+    Block until Aurora has resumed, on EVERY request — not just the first.
+
+    The container can stay warm long after Aurora re-pauses (5 min idle), so a
+    later request's real query would otherwise fail immediately. A cheap
+    `SELECT 1` with resume-retry guarantees the cluster is up before the
+    endpoint runs its queries. When Aurora is already awake this is one fast
+    round-trip; locally (SQLite/Postgres) it always succeeds instantly.
+    """
+    def _ping():
+        try:
+            db.execute(text("SELECT 1"))
+        except Exception:
+            db.rollback()  # clear the failed transaction before retrying
+            raise
+
+    _resume_retry(_ping)
+
+
 def get_db():
     """FastAPI dependency that yields a database session per request."""
     global _initialized
-    if not _initialized:
-        init_db()
-        _initialized = True
-
     db = SessionLocal()
     try:
+        if not _initialized:
+            init_db()
+            _initialized = True
+        _ensure_awake(db)
         yield db
     finally:
         db.close()
