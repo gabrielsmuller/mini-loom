@@ -9,7 +9,7 @@ resource "aws_rds_cluster" "this" {
 
   engine         = "aurora-postgresql"
   engine_mode    = "provisioned" # Serverless v2 runs in "provisioned" mode + the scaling block below
-  engine_version = "16.6"        # must be a version that supports scale-to-zero; verify on `plan`
+  engine_version = "16.11"       # current minor; AWS auto-upgrades it (see lifecycle below)
 
   database_name = "miniloom"
 
@@ -36,6 +36,13 @@ resource "aws_rds_cluster" "this" {
 
   # Portfolio convenience: allow a clean `terraform destroy` with no leftover snapshot.
   skip_final_snapshot = true
+
+  # AWS applies minor-version upgrades automatically, so the live engine_version
+  # drifts ahead of this file. Ignore that drift instead of trying (and failing)
+  # to "downgrade" back to the pinned value on every apply.
+  lifecycle {
+    ignore_changes = [engine_version]
+  }
 }
 
 # The compute node. "db.serverless" is what makes it Serverless v2 (auto-sized
@@ -45,4 +52,9 @@ resource "aws_rds_cluster_instance" "this" {
   instance_class     = "db.serverless"
   engine             = aws_rds_cluster.this.engine
   engine_version     = aws_rds_cluster.this.engine_version
+
+  # Same reason as the cluster: AWS auto-upgrades the minor version.
+  lifecycle {
+    ignore_changes = [engine_version]
+  }
 }
